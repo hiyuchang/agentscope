@@ -2,22 +2,36 @@
 """Example of training an Email Search agent with Trinity-RFT."""
 import os
 from typing import Dict
-
-from agentscope import logger
-from agentscope.formatter import OpenAIChatFormatter
-from agentscope.message import Msg
-from agentscope.tuner import TunerChatModel, Dataset, JudgeOutput, WorkflowOutput, Algorithm, tune
-
-from email_search_agent import EmailSearchAgent
-from utils import (
+from _email_search_agent import EmailSearchAgent
+from _utils import (
     AnswerModel,
     FinalRubric,
     QueryModel,
 )
+from agentscope import logger
+from agentscope.formatter import OpenAIChatFormatter
+from agentscope.message import Msg
+from agentscope.tuner import (
+    TunerChatModel,
+    Dataset,
+    JudgeOutput,
+    WorkflowOutput,
+    Algorithm,
+    tune,
+)
 
-SYSTEM_PROMPT = """You are an email search agent. You are given a user query and a list of tools you can use to search the user's email. Use the tools to search the user's emails and find the answer to the user's query. You may take up to {max_turns} turns to find the answer, so if your first seach doesn't find the answer, you can try with different keywords.
 
-Always describe what you see and plan your next steps clearly. When taking actions, explain what you're doing and why. When the answer to the task is found, call `generate_response` to finish the process. Only call `generate_response` when answer is found. You should not respond any next steps in `generate_response`. Complete all steps and then call `generate_response`.
+SYSTEM_PROMPT = """You are an email search agent. You are given a user query
+and a list of tools you can use to search the user's email. Use the tools to
+search the user's emails and find the answer to the user's query. You may take
+up to {max_turns} turns to find the answer, so if your first seach doesn't
+find the answer, you can try with different keywords.
+
+Always describe what you see and plan your next steps clearly. When taking
+actions, explain what you're doing and why. When the answer to the task is
+found, call `generate_response` to finish the process. Only call
+`generate_response` when answer is found. You should not respond any next steps
+in `generate_response`. Complete all steps and then call `generate_response`.
 
 User's email address is {inbox_address}
 
@@ -30,7 +44,7 @@ async def run_email_search_agent(
     task: Dict,
     model: TunerChatModel,
     auxiliary_models: Dict[str, TunerChatModel],
-) -> WorkflowOutput:
+) -> WorkflowOutput:  # noqa: PLR0915
     """A workflow function using the Email Search agent to solve tasks.
 
     Args:
@@ -42,7 +56,7 @@ async def run_email_search_agent(
         WorkflowOutput: The output containing the agent's response.
     """
     assert len(auxiliary_models) > 0, "LLM-as-a-Judge is required"
-    
+
     # Parse task data
     query = QueryModel.model_validate(task)
     question = task.get("question", task.get("task_desc", ""))
@@ -93,9 +107,11 @@ async def run_email_search_agent(
         "message_id_list": agent.message_id_list,
         "ever_read_message_ids": agent.ever_read_message_ids,
         # Estimate actual_turns from memory length
-        "actual_turns": max(1, (len(agent.memory.content) - 1) // 2)
-        if len(agent.memory.content) > 1
-        else 1,
+        "actual_turns": (
+            max(1, (len(agent.memory.content) - 1) // 2)
+            if len(agent.memory.content) > 1
+            else 1
+        ),
     }
 
     # Update response metadata
@@ -106,6 +122,51 @@ async def run_email_search_agent(
     return WorkflowOutput(
         response=response,
     )
+
+
+def _calculate_partial_rewards(rubric: FinalRubric) -> float:
+    """Calculate partial rewards based on rubric."""
+    partial_rewards = 0.0
+    partial_rewards += 0.1 if rubric.ever_found_right_email else 0
+    partial_rewards += 0.1 if rubric.ever_read_right_email else 0
+    partial_rewards += 0.1 if rubric.sources_correct else 0
+    return partial_rewards
+
+
+def _calculate_correct_answer_reward(
+    rubric: FinalRubric,
+    max_turns: int,
+) -> float:
+    """Calculate reward for correct answers."""
+    reward = 1.0
+    reward += 0.3 if rubric.sources_correct else 0
+    reward += 0.1 / rubric.num_sources if rubric.num_sources > 0 else 0
+    reward += 0.1 * (1 - rubric.num_turns / max_turns)
+    return reward
+
+
+def _initialize_rubric(
+    answer: str,
+    sources: list[str],
+    actual_turns: int,
+    query: QueryModel,
+    message_id_list: list[str],
+    ever_read_message_ids: list[str],
+) -> FinalRubric:
+    """Initialize and populate rubric with basic information."""
+    rubric = FinalRubric()
+    rubric.attempted_answer = answer is not None and answer != ""
+    rubric.returned_i_dont_know = answer == "I don't know"
+    rubric.num_sources = len(sources)
+    rubric.num_turns = actual_turns
+
+    if len(query.message_ids) > 0:
+        rubric.ever_found_right_email = query.message_ids[0] in message_id_list
+        rubric.ever_read_right_email = (
+            query.message_ids[0] in ever_read_message_ids
+        )
+        rubric.sources_correct = query.message_ids[0] in sources
+    return rubric
 
 
 async def email_search_judge(
@@ -136,7 +197,6 @@ async def email_search_judge(
 
     # Parse query model
     if not query_dict:
-        # Fallback: try to parse from task
         query_dict = task
     query = QueryModel.model_validate(query_dict)
 
@@ -163,66 +223,45 @@ async def email_search_judge(
         )
 
     # Initialize rubric
-    rubric = FinalRubric()
-    rubric.attempted_answer = answer is not None and answer != ""
-    rubric.returned_i_dont_know = answer == "I don't know"
-    rubric.num_sources = len(sources)
-    rubric.num_turns = actual_turns
-
-    # Check if correct email was found/read
-    if len(query.message_ids) > 0:
-        rubric.ever_found_right_email = query.message_ids[0] in message_id_list
-        rubric.ever_read_right_email = (
-            query.message_ids[0] in ever_read_message_ids
-        )
-        rubric.sources_correct = query.message_ids[0] in sources
+    rubric = _initialize_rubric(
+        answer,
+        sources,
+        actual_turns,
+        query,
+        message_id_list,
+        ever_read_message_ids,
+    )
 
     # Judge correctness using LLM-as-a-Judge
     try:
         judge_model = (
-            auxiliary_models.get('judge') or list(auxiliary_models.values())[0]
+            auxiliary_models.get("judge") or list(auxiliary_models.values())[0]
             if auxiliary_models
             else None
         )
         judge_response = await judge_correctness(
             answer,
-            query, # include truth
+            query,
             judge_model,
         )
         rubric.answer_correct = judge_response
     except Exception as e:
-        logger.error(f"Error judging correctness: {e}")
+        logger.error("Error judging correctness: %s", e)
         rubric.answer_correct = False
 
-    # Note: make sure all possible partial rewards always sum to less than 0.5.
-    partial_rewards = 0
-    partial_rewards += 0.1 if rubric.ever_found_right_email else 0
-    partial_rewards += 0.1 if rubric.ever_read_right_email else 0
-    partial_rewards += 0.1 if rubric.sources_correct else 0
+    # Calculate rewards
+    partial_rewards = _calculate_partial_rewards(rubric)
 
-    # No formatting error, but wrong answer: reward will be -1 to 0
     if rubric.attempted_answer and not rubric.answer_correct:
         result = {"accuracy": -1.0, "format": partial_rewards}
-    # Returned no answer at all: reward will be 0 to 1
     elif rubric.returned_i_dont_know or rubric.ran_out_of_turns:
         result = {"accuracy": 0.0, "format": partial_rewards}
-    # Answer is correct: reward will be 1 to 2
     elif rubric.answer_correct:
-        # Partial credit calculation is different for correct answers.
-        reward = 1
-        reward += 0.3 if rubric.sources_correct else 0
-
-        # Extra credit for not including extra sources.
-        reward += 0.1 / rubric.num_sources if rubric.num_sources > 0 else 0
-
-        # Extra credit for being faster (taking fewer turns).
-        reward += 0.1 * (1 - rubric.num_turns / max_turns)
+        reward = _calculate_correct_answer_reward(rubric, max_turns)
         result = {"accuracy": 1.0, "format": reward}
     else:
-        # logger.error(f"Rubric {rubric} not handled properly")
         result = {"accuracy": 0.0, "format": 0.0}
 
-    # Add additional metrics
     metrics = result.copy()
     metrics.update({"actual_turns": actual_turns})
 
@@ -232,7 +271,8 @@ async def email_search_judge(
     )
 
 
-############ LLM-as-a-judge ############
+# LLM-as-a-judge
+
 
 async def judge_correctness(
     answer: str,
@@ -244,17 +284,29 @@ async def judge_correctness(
     Returns a boolean *accept* flag used for scoring.
     """
 
-    system_prompt = """You are given a question, the reference answer (labelled **Reference answer**), and an answer generated by an AI assistant (labelled **AI answer**).
+    system_prompt = """You are given a question, the reference answer
+(labelled **Reference answer**), and an answer generated by an AI assistant
+(labelled **AI answer**).
 
 Follow these steps to decide whether the AI answer should be accepted:
-1. Identify EXACTLY what information the **question** is asking for (e.g. who, what, when, where, why, how, quantity, etc.).
-2. From the **Reference answer**, extract ONLY the facts that are required to directly satisfy the information need identified in step 1. Treat all other facts as non-essential context.
-3. Verify that every essential fact from step 2 appears in the **AI answer** with the same meaning. Differences in wording, order, or additional non-conflicting details are allowed.
-4. If any essential fact is missing or contradicted in the **AI answer**, then *accept* must be **false**. Otherwise *accept* must be **true**.
+1. Identify EXACTLY what information the **question** is asking for
+   (e.g. who, what, when, where, why, how, quantity, etc.).
+2. From the **Reference answer**, extract ONLY the facts that are required
+   to directly satisfy the information need identified in step 1. Treat all
+   other facts as non-essential context.
+3. Verify that every essential fact from step 2 appears in the **AI answer**
+   with the same meaning. Differences in wording, order, or additional
+   non-conflicting details are allowed.
+4. If any essential fact is missing or contradicted in the **AI answer**,
+   then *accept* must be **false**. Otherwise *accept* must be **true**.
 
-Important: Do NOT penalise the **AI answer** for omitting non-essential facts that appear in the **Reference answer**. The answer should only be rejected for errors or omissions in the information explicitly requested by the question.
+Important: Do NOT penalise the **AI answer** for omitting non-essential
+facts that appear in the **Reference answer**. The answer should only be
+rejected for errors or omissions in the information explicitly requested by
+the question.
 
-Return your judgement **accept** from **true** and **false**. Do not return any other text or formatting.
+Return your judgement **accept** from **true** and **false**. Do not return
+any other text or formatting.
 """
     prompt = (
         f"Question: {query.question}\n"
@@ -274,11 +326,12 @@ Return your judgement **accept** from **true** and **false**. Do not return any 
         if isinstance(block, dict) and block.get("type") == "text":
             result_parts.append(str(block.get("text", "")))
     result = "".join(result_parts)
-    logger.info(f"LLM judge response: {result}")
+    logger.info("LLM judge response: %s", result)
 
     return "true" in result.lower()
 
-############ End of LLM-as-a-judge ############
+
+# End of LLM-as-a-judge
 
 
 if __name__ == "__main__":
@@ -290,7 +343,7 @@ if __name__ == "__main__":
         path="/path/to/enron_emails_dataset",
         split="train",
     )
-    model = TunerChatModel(
+    tuner_model = TunerChatModel(
         model_path="Qwen/Qwen3-4B-Instruct-2507",
         max_model_len=20480,
         max_tokens=4096,
@@ -318,7 +371,7 @@ if __name__ == "__main__":
         workflow_func=run_email_search_agent,
         judge_func=email_search_judge,
         train_dataset=dataset,
-        model=model,
+        model=tuner_model,
         auxiliary_models=aux_models,
         algorithm=algorithm,
         config_path=config_path,

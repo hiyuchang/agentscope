@@ -1,23 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Adapted from https://github.com/modelscope/Trinity-RFT/blob/main/trinity/common/workflows/envs/email_searcher/react_agent.py """
+"""Adapted from Trinity-RFT"""
 import json
 import traceback
 from dataclasses import asdict
 from datetime import datetime, timedelta
 from typing import Any
-
+from _utils import (
+    read_email_tool,
+    search_emails_tool,
+)
 from agentscope import logger
 from agentscope.agent import ReActAgent
 from agentscope.message import TextBlock
 from agentscope.tool import Toolkit, ToolResponse
 
-from utils import (
-    read_email_tool,
-    search_emails_tool,
-)
 
-
-def pre_reasoning_hook(self, _kwargs: Any) -> dict[str, Any] | None:
+def pre_reasoning_hook(_self: Any, _kwargs: Any) -> dict[str, Any] | None:
     """Pre-reasoning hook to remove tool_choice from kwargs."""
     _kwargs.pop("tool_choice", None)
     return _kwargs
@@ -31,8 +29,12 @@ class EmailSearchAgent(ReActAgent):
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self.message_id_list = [] # List to store message IDs found during search
-        self.ever_read_message_ids = []  # List to store message IDs that have been read
+        self.message_id_list = (
+            []
+        )  # List to store message IDs found during search
+        self.ever_read_message_ids = (
+            []
+        )  # List to store message IDs that have been read
         toolkit = Toolkit()
         toolkit.register_tool_function(self.search_emails)
         toolkit.register_tool_function(self.read_email)
@@ -55,7 +57,7 @@ class EmailSearchAgent(ReActAgent):
         inbox_address: str,
         query_date: str,
         keywords: list[str],
-        **kwargs: Any,
+        **_kwargs: Any,
     ) -> ToolResponse:
         """
         Search the user's email inbox for emails that match the given keywords.
@@ -63,15 +65,16 @@ class EmailSearchAgent(ReActAgent):
         Args:
             inbox_address: The user's email address.
             query_date: The date of the query in 'YYYY-MM-DD' format.
-            keywords (list[str]): A list of keywords to search for in the user's email inbox.
+            keywords: Keywords to search for in the user's email inbox.
 
         Returns:
             ToolResponse:
-                A ToolResponse object containing a list of TextBlock objects in the `content` field.
-                On success, the text field of the TextBlock contains a JSON string representing
-                a list of email summaries (e.g., message_id, snippet) matching
-                the search criteria. Each email summary is converted to a dictionary via `asdict`.
-                On failure, the text indicates an error message.
+                A ToolResponse object containing a list of TextBlock objects
+                in the `content` field. On success, the text field of the
+                TextBlock contains a JSON string representing a list of email
+                summaries (e.g., message_id, snippet) matching the search
+                criteria. Each email summary is converted to a dictionary via
+                `asdict`. On failure, the text indicates an error message.
         """
 
         try:
@@ -81,7 +84,9 @@ class EmailSearchAgent(ReActAgent):
                 "%Y-%m-%d",
             )
             res = search_emails_tool(
-                inbox=inbox_address, sent_before=next_day, keywords=keywords,
+                inbox=inbox_address,
+                sent_before=next_day,
+                keywords=keywords,
             )
 
             self.message_id_list.extend([r.message_id for r in res])
@@ -96,26 +101,34 @@ class EmailSearchAgent(ReActAgent):
             )
         except Exception as e:
             logger.info(
-                f"Error in search_emails: {e}, traceback: {traceback.format_exc()}"
+                "Error in search_emails: %s, traceback: %s",
+                e,
+                traceback.format_exc(),
             )
             return ToolResponse(
                 content=[
                     TextBlock(
                         type="text",
-                        text=f"Error: Failed to search emails.\nError message: {e}",
+                        text=(
+                            f"Error: Failed to search emails.\n"
+                            f"Error message: {e}"
+                        ),
                     ),
                 ],
             )
 
-    def read_email(self, message_id: str, **kwargs: Any) -> ToolResponse:
+    def read_email(self, message_id: str, **_kwargs: Any) -> ToolResponse:
         """
-        Read the content of an email from the user's email inbox. Returns the email content.
+        Read the content of an email from the user's email inbox.
+        Returns the email content.
+
         Args:
             message_id (str): The unique identifier of the email to read.
 
         Returns:
             ToolResponse:
-                A ToolResponse object containing the email content or an error message if the email is not found.
+                A ToolResponse object containing the email content or an
+                error message if the email is not found.
         """
 
         try:
@@ -128,7 +141,10 @@ class EmailSearchAgent(ReActAgent):
                     content=[
                         TextBlock(
                             type="text",
-                            text=f"Error: Email (message_id = {message_id}) not found.",
+                            text=(
+                                f"Error: Email (message_id = {message_id}) "
+                                f"not found."
+                            ),
                         ),
                     ],
                 )
@@ -142,13 +158,18 @@ class EmailSearchAgent(ReActAgent):
             )
         except Exception as e:
             logger.info(
-                f"Error in read_email: {e}, traceback: {traceback.format_exc()}"
+                "Error in read_email: %s, traceback: %s",
+                e,
+                traceback.format_exc(),
             )
             return ToolResponse(
                 content=[
                     TextBlock(
                         type="text",
-                        text=f"Error: Failed to read email.\nError message: {e}",
+                        text=(
+                            f"Error: Failed to read email.\n"
+                            f"Error message: {e}"
+                        ),
                     ),
                 ],
             )

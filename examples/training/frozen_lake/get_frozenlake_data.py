@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Modified from https://github.com/rllm-org/rllm/blob/main/examples/frozenlake/prepare_frozenlake_data.py
+Modified from rllm
 """
 import argparse
 import os
@@ -79,7 +79,10 @@ def prepare_frozenlake_data(
     test_ps = np.random.uniform(0.6, 0.85, size=test_size)
 
     def frozenlake_process_fn(
-        seed: int, size: int, p: float, idx: int
+        seed: int,
+        size: int,
+        p: float,
+        idx: int,
     ) -> dict:
         """Process function to create FrozenLake task instances."""
         return {

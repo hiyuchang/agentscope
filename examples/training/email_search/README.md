@@ -1,6 +1,6 @@
-# Training Email Search Agent with RL using AS-Tune
+# Training Email Search Agent with RL using AgentScope-Tuner
 
-This example demonstrates how to implement reinforcement fine-tuning for the Email Search task using AS-Tune with [Trinity-RFT](https://github.com/modelscope/Trinity-RFT), inspired by [ART](https://openpipe.ai/blog/art-e-mail-agent).
+This example demonstrates how to implement reinforcement fine-tuning for the Email Search task (inspired by [ART](https://openpipe.ai/blog/art-e-mail-agent)) using AgentScope-Tuner, whose RFT functionality is backed by [Trinity-RFT](https://github.com/modelscope/Trinity-RFT).
 
 ## Task Setting
 
@@ -14,10 +14,10 @@ The agent's goal is to answer user queries by searching through an email inbox. 
 
 **Environment**: The environment is a SQLite database containing emails from the Enron Email dataset. Each task provides:
 - `question`: The user's email search query
-- `answer`: The expected answer (ground truth)
 - `inbox_address`: The email inbox to search
-- `message_ids`: IDs of relevant emails containing the answer
 - `query_date`: The date context for the query
+- `answer`: The expected answer (ground truth), only for reward calculation
+- `message_ids`: IDs of relevant emails containing the answer, only for reward calculation
 
 **Available Tools**:
 - `search_emails`: Find emails by keywords, inbox address, and date range. Returns a list of email summaries (message_id and snippet).
@@ -64,6 +64,8 @@ Each sample looks like:
 
 ## Code Implementation
 
+This section provides a high-level overview of the code implementation. For detailed implementation, please refer to the source code.
+
 ### Agent Workflow
 
 The workflow function `run_email_search_agent` implements the agent-environment interaction loop:
@@ -81,13 +83,13 @@ async def run_email_search_agent(
         model=model,
         max_iters=max_turns,
     )
-    
+
     # Run the agent with structured output
     response = await agent.reply(
         msg=Msg("user", question, role="user"),
         structured_model=AnswerModel,
     )
-    
+
     return WorkflowOutput(response=response)
 ```
 
@@ -106,19 +108,19 @@ async def email_search_judge(
     # Extract answer and sources from response
     answer = answer_and_sources.get("answer")
     sources = answer_and_sources.get("sources", [])
-    
+
     # Judge correctness using LLM-as-a-Judge
     judge_model = auxiliary_models.get('judge') or list(auxiliary_models.values())[0]
     judge_response = await judge_correctness(
         answer, query, judge_model
     )
-    
+
     # Calculate reward based on:
     # - Answer correctness (accuracy: -1.0 to 1.0)
     # - Source correctness (format: partial rewards)
     # - Efficiency (bonus for fewer turns, correct sources)
-    result = {"accuracy": 0.0, "format": 0.0}
-    
+    result = {"accuracy": ..., "format": ...}  # calculated based on judge_response
+
     return JudgeOutput(
         reward=sum(result.values()),
         metrics=metrics,
@@ -136,29 +138,27 @@ See [`main.py`](./main.py) and [`email_search_agent.py`](./email_search_agent.py
 
 ### Prerequisites
 
-- At least 2 NVIDIA GPUs with CUDA 12.8 or newer
+- At least 4 NVIDIA GPUs with CUDA 12.8 or newer
 - Follow the Trinity-RFT [installation guide](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/trinity_installation.html) to install the latest version from source code
 - Download the model checkpoint (example):
 
   ```bash
   huggingface-cli download Qwen/Qwen3-4B-Instruct-2507
+  huggingface-cli download Qwen/Qwen3-30B-A3B-Instruct-2507 # judge model
   ```
 
 ### Configuration
 
 Adjust the configuration file ([`config.yaml`](./config.yaml)) based on your hardware. Key configuration sections include:
 
-- **Model**: Set `model_path` to your model checkpoint path
+- **TunerChatModel**: Set `model_path` to your model checkpoint path
 - **Algorithm**: Configure RL algorithm parameters (e.g., `multi_step_grpo`, learning rate, policy loss function)
 - **Dataset**: The dataset path is specified in `main.py` when creating the `Dataset` object
-- **Cluster**: Configure GPU settings (`node_num`, `gpu_per_node`)
-- **Buffer**: Set training parameters (`total_epochs`, `batch_size`, `train_batch_size`)
-- **Explorer**: Configure rollout settings (e.g., `eval_interval`, `max_turns`)
 - **Auxiliary Models**: Configure judge model settings for LLM-as-a-Judge
 
 For full configuration details, see [Trinity-RFT Configuration Guide](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/trinity_configs.html).
 
-### Startup Commands
+### Start-Up Commands
 
 1. Prepare the dataset:
 

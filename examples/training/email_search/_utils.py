@@ -8,15 +8,15 @@ import os
 import sqlite3
 from dataclasses import dataclass
 from typing import Any, List, Optional
-
-from agentscope import logger
 from pydantic import BaseModel, Field, field_validator
+from agentscope import logger
 
 DEFAULT_DB_PATH = os.environ.get("DEFAULT_EMAIL_DB_PATH")
 conn = None
 
 
 def get_conn() -> sqlite3.Connection:
+    """Get or create a database connection."""
     global conn
     if conn is None:
         conn = sqlite3.connect(
@@ -29,6 +29,7 @@ def get_conn() -> sqlite3.Connection:
 
 class QueryModel(BaseModel):
     """Model for email search query."""
+
     id: int
     question: str
     answer: str
@@ -40,6 +41,7 @@ class QueryModel(BaseModel):
     @field_validator("query_date", mode="before")
     @classmethod
     def format_date(cls, v: Any) -> str:
+        """Format date to string if it's a datetime object."""
         if isinstance(v, datetime.datetime):
             return v.strftime("%Y-%m-%d")
         return v
@@ -49,10 +51,18 @@ class AnswerModel(BaseModel):
     """Model for agent's answer with sources."""
 
     answer: str = Field(
-        description="It should be called with the answer and the sources. If you cannot find the answer, you should return 'I don't know' with an empty list of sources.",
+        description=(
+            "It should be called with the answer and the sources. "
+            "If you cannot find the answer, you should return "
+            "'I don't know' with an empty list of sources."
+        ),
     )
     sources: List[str] = Field(
-        description="a list of message ids that are relevant to the query. Usually there will be only one. If you cannot find the answer, you should return an empty list.",
+        description=(
+            "a list of message ids that are relevant to the query. "
+            "Usually there will be only one. If you cannot find the "
+            "answer, you should return an empty list."
+        ),
     )
 
 
@@ -80,6 +90,7 @@ class SearchResult:
 
 class FinalRubric(BaseModel):
     """Rubric for evaluating agent performance."""
+
     answer_correct: bool = False
     sources_correct: bool = False
     num_turns: int = 0
@@ -99,6 +110,7 @@ class FinalRubric(BaseModel):
 
 # Define tools for agent
 
+
 def search_emails_tool(
     inbox: str,
     keywords: List[str],
@@ -114,17 +126,24 @@ def search_emails_tool(
 
     Args:
         inbox: The email address of the user performing the search.
-               Results include emails sent from or to (inc. cc/bcc) this address.
-        keywords: A list of keywords that must all appear in the subject or body.
+            Results include emails sent from or to (inc. cc/bcc)
+            this address.
+        keywords: A list of keywords that must all appear in the
+            subject or body.
         from_addr: Optional email address to filter emails sent *from*.
-        to_addr: Optional email address to filter emails sent *to* (inc. cc/bcc).
-        sent_after: Optional date string 'YYYY-MM-DD'. Filters for emails sent on or after this date.
-        sent_before: Optional date string 'YYYY-MM-DD'. Filters for emails sent before this date.
-        max_results: The maximum number of results to return. Cannot exceed 10.
+        to_addr: Optional email address to filter emails sent *to*
+            (inc. cc/bcc).
+        sent_after: Optional date string 'YYYY-MM-DD'. Filters for
+            emails sent on or after this date.
+        sent_before: Optional date string 'YYYY-MM-DD'. Filters for
+            emails sent before this date.
+        max_results: The maximum number of results to return.
+            Cannot exceed 10.
 
     Returns:
-        A list of SearchResult objects, each containing 'message_id' and 'snippet'.
-        Returns an empty list if no results are found or an error occurs.
+        A list of SearchResult objects, each containing 'message_id'
+        and 'snippet'. Returns an empty list if no results are found
+        or an error occurs.
     """
     # Initialize sql and params
     sql: Optional[str] = None
@@ -192,7 +211,8 @@ def search_emails_tool(
         params.append(f"{sent_before} 00:00:00")
 
     # --- Construct Final Query ---
-    # snippet(<table>, <column_index>, <highlight_start>, <highlight_end>, <ellipsis>, <tokens>)
+    # snippet(<table>, <column_index>, <highlight_start>,
+    #         <highlight_end>, <ellipsis>, <tokens>)
     # -1 means highlight across all columns (subject, body)
     sql = f"""
         SELECT
@@ -209,8 +229,8 @@ def search_emails_tool(
     params.append(max_results)
 
     # --- Execute and Fetch ---
-    logger.debug(f"Executing SQL: {sql}")
-    logger.debug(f"With params: {params}")
+    logger.debug("Executing SQL: %s", sql)
+    logger.debug("With params: %s", params)
     cursor.execute(sql, params)
     results = cursor.fetchall()
 
@@ -218,7 +238,7 @@ def search_emails_tool(
     formatted_results = [
         SearchResult(message_id=row[0], snippet=row[1]) for row in results
     ]
-    logger.info(f"Search found {len(formatted_results)} results.")
+    logger.info("Search found %d results.", len(formatted_results))
     return formatted_results
 
 
@@ -245,14 +265,18 @@ def read_email_tool(message_id: str) -> Optional[Email]:
     email_row = cursor.fetchone()
 
     if not email_row:
-        logger.warning(f"Email with message_id '{message_id}' not found.")
+        logger.warning("Email with message_id '%s' not found.", message_id)
         return None
 
     email_pk_id, msg_id, date, subject, from_addr, body, file_name = email_row
 
     # DEBUG
-    logger.info(f"[read_email_tool] input_message_id={message_id}")
-    logger.info(f"[read_email_tool] db: id={email_pk_id}, message_id={msg_id}")
+    logger.info("[read_email_tool] input_message_id=%s", message_id)
+    logger.info(
+        "[read_email_tool] db: id=%s, message_id=%s",
+        email_pk_id,
+        msg_id,
+    )
 
     # search for recipients by emails.id (rather than message_id)
     recipients_sql = """
@@ -290,3 +314,15 @@ def read_email_tool(message_id: str) -> Optional[Email]:
     )
 
     return email_obj
+
+
+__all__ = [
+    "QueryModel",
+    "AnswerModel",
+    "FinalRubric",
+    "Email",
+    "SearchResult",
+    "search_emails_tool",
+    "read_email_tool",
+    "get_conn",
+]

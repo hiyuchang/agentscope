@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 Utils for the FrozenLake environment.
-Modified from https://github.com/rllm-org/rllm/blob/main/rllm/environments/frozenlake/frozenlake.py
+Modified from rllm
 """
 
 from typing import Literal, Optional, Tuple
-
 import numpy as np
 from pydantic import BaseModel, Field
 
@@ -47,7 +46,8 @@ _ Frozen | O Hole | G Goal | P Player
 
 Rules:
 1. Avoid falling into holes (O).
-2. Frozen tiles are slippery, you may move perpendicular to your intended direction.
+2. Frozen tiles are slippery, you may move perpendicular to
+   your intended direction.
 
 Valid Action (separated by | ):
 Up | Down | Left | Right
@@ -56,13 +56,21 @@ Rewards:
 Fall into hole: 0
 Reach goal: +1.0
 
-You will be provided the current observation, please decide on the next Action.
-You should show your thought process and then input the final action in ``` ```.
-You should only output the NEXT ACTION at each iteration in the ``` ```. For example, if you want to move up, you should output ```Up```.
-You should plan ahead and need to achieve it in minimum number of steps.
-You should be aware that frozen tiles can be slippery, but the chance is small and you should not overthink it.
+You will be provided the current observation, please decide on
+the next Action.
+You should show your thought process and then input the final
+action in ``` ```.
+You should only output the NEXT ACTION at each iteration in
+the ``` ```. For example, if you want to move up, you should
+output ```Up```.
+You should plan ahead and need to achieve it in minimum number
+of steps.
+You should be aware that frozen tiles can be slippery, but the
+chance is small and you should not overthink it.
 
-Please show your thinking process and put the final action in ``` ```. In every turn, the final action MUST be one of Up, Down, Left, Right.
+Please show your thinking process and put the final action in
+``` ```. In every turn, the final action MUST be one of Up,
+Down, Left, Right.
 """
 
 
@@ -154,7 +162,9 @@ def generate_random_map(
     while not valid:
         p = min(1, p)
         board = np_random.choice(
-            ["F", "H"], (size, size), p=[p, 1 - p]
+            ["F", "H"],
+            (size, size),
+            p=[p, 1 - p],
         ).tolist()
 
         while True:
@@ -189,3 +199,11 @@ def get_goal_position(
     if positions.size == 0:
         return None  # G not found
     return tuple(positions[0])  # returns (row, col)
+
+
+__all__ = [
+    "SYSTEM_PROMPT",
+    "FrozenLakeAction",
+    "generate_random_map",
+    "get_goal_position",
+]

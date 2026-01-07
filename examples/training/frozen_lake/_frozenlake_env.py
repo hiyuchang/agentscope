@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Adapted from https://github.com/modelscope/Trinity-RFT/blob/main/examples/agentscope_frozenlake/env.py """
+"""Adapted from Trinity-RFT"""
 import copy
-from typing import Dict, Optional, Tuple
-
+from typing import Dict, Optional, Tuple, Union
 import numpy as np
 
 try:
@@ -11,12 +10,15 @@ try:
     )
 except ImportError:
     GymFrozenLakeEnv = object
-
-from utils import generate_random_map, get_goal_position
+from _utils import (
+    generate_random_map,
+    get_goal_position,
+)  # pylint: disable=E0611
 
 
 class FrozenLakeEnv(GymFrozenLakeEnv):
     """FrozenLake environment wrapper."""
+
     # Map gym state in integer
     MAP_LOOKUP = {
         b"P": 0,
@@ -56,16 +58,14 @@ class FrozenLakeEnv(GymFrozenLakeEnv):
         seed: int = 42,
     ):
         self.max_steps = max_steps or 8
-        self.desc = desc
+        self.desc: Union[str, np.ndarray, None] = desc
         self.is_slippery = is_slippery
         self.size = size
         self.p = p
         self.seed = seed
+        self.render_mode: Optional[str] = None
         try:
             import gymnasium as gym
-            from gymnasium.envs.toy_text.frozen_lake import (
-                FrozenLakeEnv as GymFrozenLakeEnvLocal,
-            )
         except ImportError as e:
             error_message = (
                 "Gymnasium is not installed. "
@@ -88,11 +88,12 @@ class FrozenLakeEnv(GymFrozenLakeEnv):
 
         self.goal_position = goal_position
 
-        GymFrozenLakeEnvLocal.__init__(
+        super().__init__(
             self,
             desc=random_map[:],
             is_slippery=self.is_slippery,
         )
+        assert isinstance(self.desc, np.ndarray)
         self.action_space = gym.spaces.Discrete(4, start=1)
 
         self.map_kwargs = {
@@ -118,8 +119,9 @@ class FrozenLakeEnv(GymFrozenLakeEnv):
     def step(self, action: str) -> Tuple[str, float, bool, Dict]:
         """Execute a step in the environment.
 
-        Maps custom action to gymnasium FrozenLakeEnv action and takes the step.
-        Checks if the action is effective (whether player moves in the env).
+        Maps custom action to gymnasium FrozenLakeEnv action and
+        takes the step. Checks if the action is effective (whether
+        player moves in the env).
 
         Args:
             action: The action to take.
@@ -128,7 +130,9 @@ class FrozenLakeEnv(GymFrozenLakeEnv):
             Tuple of (observation, reward, done, info).
         """
         if self.success():
-            return self.render(), 1, True, {"action_is_effective": False}
+            obs = self.render(mode="tiny_rgb_array")
+            assert isinstance(obs, str)
+            return obs, 1.0, True, {"action_is_effective": False}
 
         action_id: int = self.ACTION_LOOKUP.get(action.lower(), 0)
 
@@ -139,7 +143,9 @@ class FrozenLakeEnv(GymFrozenLakeEnv):
             action_id == self.INVALID_ACTION
             or action_id not in self.action_map
         ):
-            return self.render(), 0, False, {"action_is_effective": False}
+            obs = self.render(mode="tiny_rgb_array")
+            assert isinstance(obs, str)
+            return obs, 0.0, False, {"action_is_effective": False}
 
         prev_player_position = int(self.s)
 
@@ -149,16 +155,18 @@ class FrozenLakeEnv(GymFrozenLakeEnv):
             self.action_map[action_id],
         )
 
-        obs = self.render()
+        obs = self.render(mode="tiny_rgb_array")
+        assert isinstance(obs, str)
         return (
             obs,
-            reward,
-            done,
+            float(reward),
+            bool(done),
             {"action_is_effective": prev_player_position != int(player_pos)},
         )
 
     def render(
-        self, mode: str = "tiny_rgb_array"
+        self,
+        mode: str = "tiny_rgb_array",
     ) -> str | list[str] | np.ndarray:
         """Render the environment.
 
@@ -177,12 +185,12 @@ class FrozenLakeEnv(GymFrozenLakeEnv):
             "ansi",
         ]
         if mode in ["rgb_array", "ansi"]:
-            prev_render_mode = getattr(self, "render_mode", None)
+            prev_render_mode = self.render_mode
             self.render_mode = mode
             obs = super().render()
-            if prev_render_mode is not None:
-                self.render_mode = prev_render_mode
+            self.render_mode = prev_render_mode
             return obs
+        assert isinstance(self.desc, np.ndarray)
         room_state = copy.deepcopy(self.desc)
 
         # replace the position of start 'S' with 'F'
@@ -204,6 +212,7 @@ class FrozenLakeEnv(GymFrozenLakeEnv):
             return room_state
 
         room_state = self.render(mode="state").tolist()
+        assert isinstance(room_state, list)
 
         if mode == "list":
 
@@ -230,31 +239,84 @@ class FrozenLakeEnv(GymFrozenLakeEnv):
         return ""
 
     def reset(
-        self, task: Optional[Dict] = None
+        self,
+        task: Optional[Dict] = None,
     ) -> tuple[str, Dict]:
         """Reset the environment with optional task parameters."""
         task = task or {}
-        # Reinitialize with task parameters
-        # Note: We call __init__ to reset the environment with new parameters
-        # This is intentional to allow dynamic task changes
-        self.__init__(  # pylint: disable=unnecessary-dunder-call
-            size=task.get("size", self.map_kwargs["size"]),
-            p=task.get("p", self.map_kwargs["p"]),
-            seed=task.get("seed", self.env_kwargs["seed"]),
-            is_slippery=task.get(
-                "is_slippery",
-                self.env_kwargs["is_slippery"],
-            ),
+        # Update parameters from task if provided
+        size = task.get("size", self.map_kwargs["size"])
+        p = task.get("p", self.map_kwargs["p"])
+        seed = task.get("seed", self.env_kwargs["seed"])
+        is_slippery = task.get(
+            "is_slippery",
+            self.env_kwargs["is_slippery"],
         )
+        desc = task.get("desc", self.env_kwargs.get("desc"))
+
+        # Update instance variables
+        self.size = size
+        self.p = p
+        self.seed = seed
+        self.is_slippery = is_slippery
+        self.map_kwargs["size"] = size
+        self.map_kwargs["p"] = p
+        self.env_kwargs["seed"] = seed
+        self.env_kwargs["is_slippery"] = is_slippery
+        if desc is not None:
+            self.env_kwargs["desc"] = copy.deepcopy(desc)
+
+        if desc is None:
+            random_map, goal_position = generate_random_map(
+                size=size,
+                p=p,
+                seed=seed,
+                max_steps=self.max_steps,
+            )
+        else:
+            random_map = np.asarray(copy.deepcopy(desc), dtype="c")
+            goal_position = get_goal_position(random_map)
+
+        self.goal_position = goal_position
+        self.desc = random_map[:]
+
+        # Reinitialize parent class with new map
+        try:
+            import gymnasium as gym
+            from gymnasium.envs.toy_text.frozen_lake import (
+                FrozenLakeEnv as GymFrozenLakeEnvLocal,
+            )
+
+            # Initialize parent class with new parameters
+            GymFrozenLakeEnvLocal.__init__(  # noqa: C2801, PLC2801
+                self,
+                desc=random_map[:],
+                is_slippery=self.is_slippery,
+            )
+            assert isinstance(self.desc, np.ndarray)
+            self.action_space = gym.spaces.Discrete(4, start=1)
+        except ImportError as e:
+            error_message = (
+                "Gymnasium is not installed. "
+                "Please install gymnasium first before "
+                "running the frozen_lake workflow. "
+                f"Error: {str(e)}"
+            )
+            raise ImportError(error_message) from e
+
         super().reset(seed=self.seed)
-        return self.render(mode="tiny_rgb_array"), {}
+        obs = self.render(mode="tiny_rgb_array")
+        assert isinstance(obs, str)
+        return obs, {}
 
     def finished(self) -> bool:
         """Check if the episode is finished (goal or hole)."""
         player_pos = self._get_player_position()
+        assert isinstance(self.desc, np.ndarray)
         return self.desc[player_pos] in b"GH"  # type: ignore
 
     def success(self) -> bool:
         """Check if the agent has reached the goal (G)."""
         player_pos = self._get_player_position()
+        assert isinstance(self.desc, np.ndarray)
         return self.desc[player_pos] in b"G"

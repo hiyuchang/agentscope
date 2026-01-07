@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Adapted from https://github.com/modelscope/Trinity-RFT/blob/main/examples/agentscope_frozenlake/agent.py """
+"""Adapted from Trinity-RFT"""
 import re
-
-from utils import SYSTEM_PROMPT, FrozenLakeAction
-
+from _utils import SYSTEM_PROMPT, FrozenLakeAction  # pylint: disable=E0611
 from agentscope.agent import ReActAgent
 from agentscope.formatter import OpenAIChatFormatter
 from agentscope.message import Msg
 from agentscope.model import OpenAIChatModel
+
 
 INVALID_ACTION = "still"
 VALID_ACTIONS = {
@@ -20,7 +19,6 @@ VALID_ACTIONS = {
 
 class FrozenLakeAgent(ReActAgent):
     """Agent for FrozenLake environment."""
-
 
     def __init__(self, model: OpenAIChatModel, max_steps: int = 20):
         super().__init__(

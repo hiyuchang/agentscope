@@ -1,8 +1,8 @@
-# Training FrozenLake Agent with RL using Trinity-RFT
+# Training FrozenLake Agent with RL using AgentScope-Tuner
 
 ## Summary
 
-This example demonstrates how to use **as-tune** (AgentScope's tuning method) to implement reinforcement fine-tuning for the [Frozen Lake](https://gymnasium.farama.org/environments/toy_text/frozen_lake/) task using [Trinity-RFT](https://github.com/modelscope/Trinity-RFT). The agent learns to navigate a frozen lake grid from a starting position to a goal while avoiding holes through multi-step interactions with the environment.
+This example demonstrates how to use AgentScope-Tuner to implement reinforcement fine-tuning for the [Frozen Lake](https://gymnasium.farama.org/environments/toy_text/frozen_lake/) task using [Trinity-RFT](https://github.com/modelscope/Trinity-RFT). The agent learns to navigate a frozen lake grid from a starting position to a goal while avoiding holes through multi-step interactions with the environment.
 
 ## Task Setting
 
@@ -22,13 +22,13 @@ The agent is implemented as a **ReActAgent** (Reasoning and Acting Agent) that:
 ### Environment
 The environment is based on Gymnasium's FrozenLake environment, wrapped to provide:
 - **Grid-based navigation**: Randomly generated maps with configurable size (2x2 to 6x6)
-- **Tile types**: 
+- **Tile types**:
   - `S`: Start position
   - `F`: Frozen tile (safe to walk on)
   - `H`: Hole (terminates episode with reward 0)
   - `G`: Goal (terminates episode with reward +1.0)
 - **Action space**: Discrete actions (Up, Down, Left, Right)
-- **Reward structure**: 
+- **Reward structure**:
   - +1.0 for reaching the goal
   - 0.0 for falling into a hole or failing to reach the goal
 - **Observations**: Text-based grid representation showing current player position
@@ -73,6 +73,8 @@ Each sample looks like:
 
 ## Code Implementation
 
+This section provides a high-level overview of the code implementation. For detailed implementation, please refer to the source code.
+
 ### High-level Overview
 
 The implementation consists of three main components:
@@ -82,8 +84,6 @@ The implementation consists of three main components:
 3. **Workflow** (`run_frozen_lake`): Orchestrates the agent-environment interaction loop
 
 ### Agent Workflow
-
-The workflow function `run_frozen_lake` implements the agent-environment interaction loop:
 
 The workflow function `run_frozen_lake` implements the agent-environment interaction loop:
 
@@ -127,15 +127,15 @@ async def run_frozen_lake(
 ```
 
 **Key characteristics:**
-- **Multi-step interaction**: The agent takes multiple actions in a single episode, unlike single-turn QA tasks
-- **State tracking**: The agent maintains internal state (current step, last action, last observation) across steps
-- **Error handling**: Invalid actions or agent errors are caught and handled gracefully
+- Multi-step interaction: The agent takes multiple actions in a single episode, unlike single-turn QA tasks
+- State tracking: The agent maintains internal state (current step, last action, last observation) across steps
+- Error handling: Invalid actions or agent errors are caught and handled gracefully
 
 ### Reward Function
 
-**No separate judge function is needed**: The reward comes directly from the environment:
-- **+1.0**: Agent successfully reaches the goal (G)
-- **0.0**: Agent falls into a hole (H) or fails to reach the goal within the maximum steps
+No separate judge function is needed. The reward comes directly from the environment:
+- 1.0: Agent successfully reaches the goal (G)
+- 0.0: Agent falls into a hole (H) or fails to reach the goal within the maximum steps
 
 The reward is computed as the sum of step rewards throughout the episode. The workflow returns:
 - `reward`: Final cumulative reward
@@ -211,36 +211,26 @@ Update the dataset path in `main.py` to point to your generated dataset director
 
 ### Step 2: Configure the Training
 
-The training configuration is specified in [config.yaml](./config.yaml). Key configuration sections include:
+Key configuration can be identified in the code, including:
 
 **Algorithm Configuration** (`algorithm`):
 - `algorithm_type`: `multi_step_grpo` (Group Relative Policy Optimization for multi-step tasks)
-- `repeat_times`: Number of policy update iterations per batch (default: 16)
-- `kl_loss_fn`: KL divergence loss function (default: `low_var_kl`)
-- `optimizer.lr`: Learning rate (default: 1e-6)
+- `group_size`: Number of policy update iterations per batch (default: 16)
+- `batch_size`: Batch size for training (default: 32)
+- `learning_rate`: Learning rate (default: 1e-6)
 
 **Model Configuration** (`model`):
 - `model_path`: Path to the base model (e.g., `Qwen/Qwen2.5-3B-Instruct`)
-- `max_prompt_tokens`: Maximum prompt length (default: 23552)
-- `max_response_tokens`: Maximum response length (default: 2048)
-- `temperature`: Sampling temperature (default: 1.0)
+- `max_model_len`: Maximum model context length (default: 25600)
+- `max_tokens`: Maximum tokens for response generation (default: 2048)
+- `inference_engine_num`: Number of inference engines (default: 6)
 
-**Buffer Configuration** (`buffer`):
-- `total_epochs`: Total training epochs (default: 5)
-- `batch_size`: Batch size for data collection (default: 32)
-- `train_batch_size`: Batch size for training (default: 1024)
-- `replay_buffer.enable`: Enable experience replay (default: true)
+**Dataset Configuration** (`dataset`):
+- `path`: Path to the dataset (default: `/path/to/frozenlake`)
+- `split`: Split of the dataset (default: `train`)
 
-**Explorer Configuration** (`explorer`):
-- `runner_per_model`: Number of parallel runners per model (default: 16)
-- `rollout_model.engine_num`: Number of inference engines (default: 6)
-- `rollout_model.tensor_parallel_size`: Tensor parallelism size (default: 1)
+Adjust these parameters based on your hardware resources and training requirements. Other parameters can be spetified in  [config.yaml](./config.yaml).
 
-**Trainer Configuration** (`trainer`):
-- `save_interval`: Checkpoint saving interval (default: 100)
-- `grad_clip`: Gradient clipping value (default: 1.0)
-
-Adjust these parameters based on your hardware resources and training requirements.
 
 ### Step 3: Set Up Ray Cluster
 
@@ -258,7 +248,7 @@ ray start --head
 python main.py
 ```
 
-The training will start and you can monitor the progress through the logs. Checkpoints will be saved according to the `trainer.save_interval` configuration.
+The training will start and you can monitor the progress through the logs. Checkpoints will be saved once every `trainer.save_interval` steps.
 
 ## Experimental Results
 

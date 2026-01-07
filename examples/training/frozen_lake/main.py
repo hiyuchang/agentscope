@@ -2,12 +2,16 @@
 """Example of training a FrozenLake agent with Trinity-RFT."""
 import os
 from typing import Dict
-
-from frozenlake_agent import FrozenLakeAgent
-from frozenlake_env import FrozenLakeEnv
-
+from _frozenlake_agent import FrozenLakeAgent
+from _frozenlake_env import FrozenLakeEnv
 from agentscope.message import Msg
-from agentscope.tuner import tune, WorkflowOutput, Dataset, TunerChatModel, Algorithm
+from agentscope.tuner import (
+    tune,
+    WorkflowOutput,
+    Dataset,
+    TunerChatModel,
+    Algorithm,
+)
 
 
 async def run_frozen_lake(
@@ -26,6 +30,8 @@ async def run_frozen_lake(
         WorkflowOutput: The workflow output containing the reward, response and
             metrics.
     """
+
+    assert len(auxiliary_models) == 0, "No auxiliary models are needed"
 
     # Extract workflow arguments from task or use defaults
     workflow_args = task.get("workflow_args", {})
@@ -116,9 +122,9 @@ async def run_frozen_lake(
 if __name__ == "__main__":
     dataset = Dataset(
         path="/path/to/frozenlake",
-        split="train"
+        split="train",
     )
-    model = TunerChatModel(
+    tuner_model = TunerChatModel(
         model_path="Qwen/Qwen2.5-3B-Instruct",
         max_model_len=25600,
         max_tokens=2048,
@@ -132,11 +138,12 @@ if __name__ == "__main__":
         learning_rate=1e-6,
     )
     config_path = os.path.join(
-        os.path.dirname(__file__), "config.yaml"
+        os.path.dirname(__file__),
+        "config.yaml",
     )  # define some default parameters
     tune(
         workflow_func=run_frozen_lake,
-        model=model,
+        model=tuner_model,
         train_dataset=dataset,
         algorithm=algorithm,
         config_path=config_path,
