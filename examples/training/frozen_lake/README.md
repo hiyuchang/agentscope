@@ -33,7 +33,6 @@ The environment is based on Gymnasium's FrozenLake environment, wrapped to provi
   - 0.0 for falling into a hole or failing to reach the goal
 - **Observations**: Text-based grid representation showing current player position
 
-### Available Tools
 The agent does not use external tools. It interacts directly with the environment through:
 - `env.reset(task)`: Initialize environment with task parameters
 - `env.step(action)`: Execute action and receive observation, reward, and done flag

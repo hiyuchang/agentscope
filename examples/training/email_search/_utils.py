@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-This file defines Email Dataclass and three email_search_tools.
+This file defines Dataclass and tool implementations.
 Modified from https://github.com/OpenPipe/ART/blob/art-e/
 """
 import datetime
