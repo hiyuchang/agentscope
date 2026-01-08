@@ -26,7 +26,7 @@ The agent's goal is to answer user queries by searching through an email inbox. 
 
 ## Dataset Preparation
 
-The dataset contains email queries based on the Enron Email dataset. Run the data preparation script to generate the email database and datasets:
+The dataset contains email queries based on the [Enron Email dataset](https://huggingface.co/datasets/corbt/enron-emails). Run the data preparation script to generate the email database and datasets:
 
 ```bash
 python prepare_data.py
@@ -139,6 +139,7 @@ See [`main.py`](./main.py) and [`email_search_agent.py`](./email_search_agent.py
 ### Prerequisites
 
 - At least 4 NVIDIA GPUs with CUDA 12.8 or newer
+  * Note: For the 30B Judge model, you need to use a GPU with at least 4080 memory; you can also run the model on multiple GPUs by using `tensor_parallel_size > 1` to reduce the memory usage (by default, `tensor_parallel_size=2`).
 - Follow the Trinity-RFT [installation guide](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/trinity_installation.html) to install the latest version from source code
 - Download the model checkpoint (example):
 
